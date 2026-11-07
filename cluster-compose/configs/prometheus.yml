@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+scrape_configs:
+- job_name: fastcache
+  metrics_path: /metrics
+  static_configs:
+  - targets:
+    - 192.168.0.123:8080
+    - 192.168.0.123:8081
+    - 192.168.0.123:8082

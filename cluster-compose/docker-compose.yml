@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  init-configs:
+    image: python:3.11-slim
+    container_name: fastcache-init-configs
+    environment:
+      - NODE0_IP=${NODE0_IP:-}
+      - NODE1_IP=${NODE1_IP:-}
+      - NODE2_IP=${NODE2_IP:-}
+    volumes:
+      - ./configs:/configs
+      - ./generate_configs.py:/generate_configs.py
+    command: >
+      sh -c "pip install pyyaml && python /generate_configs.py"
+
+  fastcache-node-0:
+    image: alexaborisov/fastcache:26.43
+    container_name: fastcache-node-0
+    network_mode: host
+    environment:
+      - NODE_ID=0
+    volumes:
+      - ./configs:/configs
+      - ./entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    depends_on:
+      init-configs:
+        condition: service_completed_successfully
+
+  fastcache-node-1:
+    image: alexaborisov/fastcache:26.43
+    container_name: fastcache-node-1
+    network_mode: host
+    environment:
+      - NODE_ID=1
+    volumes:
+      - ./configs:/configs
+      - ./entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    depends_on:
+      init-configs:
+        condition: service_completed_successfully
+
+  fastcache-node-2:
+    image: alexaborisov/fastcache:26.43
+    container_name: fastcache-node-2
+    network_mode: host
+    environment:
+      - NODE_ID=2
+    volumes:
+      - ./configs:/configs
+      - ./entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    depends_on:
+      init-configs:
+        condition: service_completed_successfully
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: fastcache-prometheus
+    network_mode: host
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      init-configs:
+        condition: service_completed_successfully
+
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: fastcache-grafana
+    network_mode: host
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboard.json:/etc/grafana/dashboards/dashboard.json:ro
+    depends_on:
+      - prometheus
