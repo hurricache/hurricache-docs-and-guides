@@ -59,7 +59,7 @@ gRPC API.
 |---|---|---|---|
 | `DEL` / `UNLINK` | `remove(key)` → `Boolean` | per-key | Deletes a scalar or an entire container |
 | `EXISTS` | `containsKey(key)` → `Boolean` | per-key | Also `containsKey(key, containerKey)` for container members |
-| `EXPIRE` / `PEXPIRE` / `EXPIREAT` | `setTtl(key, ttl)` → `Boolean` | relay | |
+| `EXPIRE` / `PEXPIRE` / `EXPIREAT` | `setTtl(key, ttlMs)` → `Boolean` | relay | Data TTL is in milliseconds; lock TTL is in seconds |
 | `TTL` / `PTTL` | `getTtl(key)` → `Long` | relay | |
 | `PERSIST` | `setTtl(key, UINT64_MAX)` | relay | |
 | `TYPE` | type is available from `Variant` after `get` | relay | No separate method |

@@ -54,7 +54,7 @@ HurriCache имеет два входа:
 |---|---|---|---|
 | `DEL` / `UNLINK` | `remove(key)` → `Boolean` | per-key | Удаляет скаляр или контейнер целиком |
 | `EXISTS` | `containsKey(key)` → `Boolean` | per-key | Также `containsKey(key, containerKey)` для членов контейнера |
-| `EXPIRE` / `PEXPIRE` / `EXPIREAT` | `setTtl(key, ttl)` → `Boolean` | relay | |
+| `EXPIRE` / `PEXPIRE` / `EXPIREAT` | `setTtl(key, ttlMs)` → `Boolean` | relay | TTL данных — миллисекунды; TTL лока — секунды |
 | `TTL` / `PTTL` | `getTtl(key)` → `Long` | relay | |
 | `PERSIST` | `setTtl(key, UINT64_MAX)` | relay | |
 | `TYPE` | тип доступен из `Variant` после `get` | relay | Отдельного метода нет |
