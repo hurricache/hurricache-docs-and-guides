@@ -124,7 +124,8 @@ sorted-set + hash в Redis).
 | `ZPOPMIN` / `ZPOPMAX` | `getAndDeleteElementInRangeOrderedSet(...)` | relay | Читает и удаляет диапазон |
 | `ZREM` | `getAndRemoveElementWithWeight(key, w)` | relay | |
 | `ZCARD` | `getSize(key)` | relay | |
-| `ZINCRBY` | `addInContainer(...)` | relay | |
+| `ZINCRBY` | `incrementOrder(key, OrderedPayload(value, curWeight), delta)` | MOVED | Атомарный инкремент веса; в кластере — редирект на владельца (relay намеренно нет: нужен текущий вес, его вычитка = стрим всего сета) |
+| — (нет команды) | `update(key, OrderedPayload(value, curWeight), newWeight)` | — | Абсолютная установка веса элемента — только gRPC API |
 | `ZMSCORE` / `ZCOUNT` / `ZRANK` / `ZREVRANK` / `ZSCAN` | — | relay | Только RESP |
 
 ## Серверные команды — всегда local

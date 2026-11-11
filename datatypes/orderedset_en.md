@@ -12,6 +12,8 @@ Use cases: ratings, priority queues, leaderboards, delayed jobs (weight = execut
 |---|---|---|
 | `createOrderedSet(key, entries, ttl?)` → `KeyHintData` | Create with initial content | |
 | `addElementWithWeight(key, weight, value)` → `Integer` | Add an element with a weight | `ZADD` analogue |
+| `incrementOrder(key, OrderedPayload(value, curWeight), delta)` → `Boolean` | Atomic weight increment/decrement; leaving uint64 range → `OUT_OF_RANGE` | `ZINCRBY` over gRPC; element is addressed by exact (value+weight) |
+| `update(key, OrderedPayload(value, curWeight), newWeight)` → `Boolean` | Set an absolute weight | Reordering an element |
 | `getOrderedSet(key)` → `List<OrderedVariant>` | Read all, ordered by weight | `ZRANGE` analogue |
 | `getElementInRangeOrderedSet(key, from, to)` → `List<OrderedVariant>` | Weight range read | `ZRANGEBYSCORE` analogue; "jobs due in the next hour" |
 | `getAndDeleteElementInRangeOrderedSet(key, from, to)` → `List<OrderedVariant>` | Atomically read and delete a range | `ZPOPMIN/MAX` analogue; claiming due jobs |

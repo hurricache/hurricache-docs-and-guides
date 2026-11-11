@@ -14,6 +14,8 @@
 |---|---|---|
 | `createOrderedMap(key, map, ttl?)` → `KeyHintData` | Создать с начальным содержимым (`OrderedPayload` = ключ+вес → `Variant`) | |
 | `addElementOrderedMap(key, orderedKey, value)` → `Integer` | Добавить/обновить элемент | |
+| `incrementOrder(key, OrderedPayload(key, curWeight), delta)` → `Boolean` | Атомарный инкремент/декремент веса, payload сохраняется; выход за uint64 → `OUT_OF_RANGE` | Рейтинги/приоритеты с атрибутами |
+| `update(key, OrderedPayload(key, curWeight), newWeight)` → `Boolean` | Абсолютный вес, payload сохраняется | Переупорядочивание без потери данных |
 | `getOrderedMap(key)` → `Map<OrderedPayload, Variant>` | Прочитать целиком | |
 | `getElementInRangeOrderedMap(key, from, to)` → `Map<OrderedPayload, Variant>` | Диапазон по весу | Топ-N кандидатов, выборка по приоритету |
 | `getAndDeleteElementInRangeOrderedMap(key, from, to)` → `Map<...>` | Атомарно прочитать и удалить диапазон | Забрать готовые задачи с телами |

@@ -41,6 +41,8 @@ for (var f : futures) f.get();
 ## Server-side levers (briefly)
 
 - CPU pinning of threads (node config) removes scheduler jitter.
+- `HURRICACHE_WORKER_CORES=1,2,3` — pins the internal gRPC event-engine worker threads to
+  the listed cores (separates the network stack from cache worker threads).
 - Snapshots are background-only and never touch the hot path.
 - Benchmarks and measurement methodology: the Performance tab on the website /
   `operations`.

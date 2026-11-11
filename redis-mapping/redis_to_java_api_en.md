@@ -129,7 +129,8 @@ the Redis sorted-set-plus-hash pairing).
 | `ZPOPMIN` / `ZPOPMAX` | `getAndDeleteElementInRangeOrderedSet(...)` | relay | Reads and deletes a range |
 | `ZREM` | `getAndRemoveElementWithWeight(key, w)` | relay | |
 | `ZCARD` | `getSize(key)` | relay | |
-| `ZINCRBY` | `addInContainer(...)` | relay | |
+| `ZINCRBY` | `incrementOrder(key, OrderedPayload(value, curWeight), delta)` | MOVED | Atomic weight increment; in a cluster — redirect to the owner (deliberately no relay: it needs the current weight, and reading it means streaming the whole set) |
+| — (no command) | `update(key, OrderedPayload(value, curWeight), newWeight)` | — | Absolute weight set for an element — gRPC API only |
 | `ZMSCORE` / `ZCOUNT` / `ZRANK` / `ZREVRANK` / `ZSCAN` | — | relay | RESP only |
 
 ## Server commands — always local

@@ -33,6 +33,16 @@ What to watch first:
   steady during deploys.
 - A three-node cluster comes up in under a minute.
 
+## CPU pinning
+
+- Explicit offsets in the config: `cpu_pin_offset` (worker threads) and
+  `replica.cpu_pin_offset` (replication) — threads are pinned to cores starting at the
+  offset.
+- **`HURRICACHE_WORKER_CORES`** (env, e.g. `HURRICACHE_WORKER_CORES=1,2,3`):
+  pins the **internal gRPC event-engine worker threads** (library threads) to the listed
+  cores. The server prints a confirmation on startup. Use it to separate the gRPC network
+  stack from the cache worker threads.
+
 ## Licensing
 
 - Without a license file, community limits apply: up to 3 nodes, 1024 partitions,

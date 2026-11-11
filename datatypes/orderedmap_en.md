@@ -14,6 +14,8 @@ attributes, delayed jobs with bodies.
 |---|---|---|
 | `createOrderedMap(key, map, ttl?)` → `KeyHintData` | Create with initial content (`OrderedPayload` = key+weight → `Variant`) | |
 | `addElementOrderedMap(key, orderedKey, value)` → `Integer` | Add/update an element | |
+| `incrementOrder(key, OrderedPayload(key, curWeight), delta)` → `Boolean` | Atomic weight increment/decrement, payload preserved; leaving uint64 range → `OUT_OF_RANGE` | Ratings/priorities with attributes |
+| `update(key, OrderedPayload(key, curWeight), newWeight)` → `Boolean` | Absolute weight, payload preserved | Reordering without data loss |
 | `getOrderedMap(key)` → `Map<OrderedPayload, Variant>` | Read the whole map | |
 | `getElementInRangeOrderedMap(key, from, to)` → `Map<OrderedPayload, Variant>` | Weight range read | Top-N candidates, priority selection |
 | `getAndDeleteElementInRangeOrderedMap(key, from, to)` → `Map<...>` | Atomically read and delete a range | Claiming ready jobs with their bodies |

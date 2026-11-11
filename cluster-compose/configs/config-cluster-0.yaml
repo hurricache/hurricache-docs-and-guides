@@ -1,24 +1,24 @@
 cluster:
 - target_ip: 192.168.0.123
-  target_sport: 50000
-  target_eport: 50001
+  target_port: 50000
   coordinator_ip: 192.168.0.123
+  replicator_ip: 192.168.0.123
   coordinator_port: 51000
   replicator_port: 52000
 - target_ip: 192.168.0.123
-  target_sport: 60000
-  target_eport: 60001
+  target_port: 60000
   coordinator_ip: 192.168.0.123
+  replicator_ip: 192.168.0.123
   coordinator_port: 61000
   replicator_port: 62000
 - target_ip: 192.168.0.123
-  target_sport: 20000
-  target_eport: 20001
+  target_port: 20000
   coordinator_ip: 192.168.0.123
+  replicator_ip: 192.168.0.123
   coordinator_port: 21000
   replicator_port: 22000
 cache_server_ip: 192.168.0.123
-cache_server_sport: 50000
+cache_port: 50000
 coordinator_ip: 192.168.0.123
 coordinator_port: 51000
 partitions: 1024
@@ -27,7 +27,7 @@ cpu_pin_offset: 0
 hello_delay: 10
 force_start_delay: 20
 cache_stat_port: 8080
-heartbit: 5
+heartbeat: 5
 replica:
   port: 52000
   ip: 192.168.0.123

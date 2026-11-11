@@ -37,17 +37,17 @@ ip_node2 = os.getenv("NODE2_IP") or default_ip
 
 nodes_data = [
     {
-        "target_ip": ip_node0, "target_sport": 50000, "target_eport": 50001,
+        "target_ip": ip_node0, "target_port": 50000,
         "coordinator_ip": ip_node0, "coordinator_port": 51000,
         "replicator_port": 52000, "stat_port": 8080, "cpu_pin_offset": 0, "rep_cpu_pin_offset": 8
     },
     {
-        "target_ip": ip_node1, "target_sport": 60000, "target_eport": 60001,
+        "target_ip": ip_node1, "target_port": 60000,
         "coordinator_ip": ip_node1, "coordinator_port": 61000,
         "replicator_port": 62000, "stat_port": 8081, "cpu_pin_offset": 4, "rep_cpu_pin_offset": 10
     },
     {
-        "target_ip": ip_node2, "target_sport": 20000, "target_eport": 20001,
+        "target_ip": ip_node2, "target_port": 20000,
         "coordinator_ip": ip_node2, "coordinator_port": 21000,
         "replicator_port": 22000, "stat_port": 8082, "cpu_pin_offset": 8, "rep_cpu_pin_offset": 12
     }
@@ -56,10 +56,10 @@ nodes_data = [
 cluster_section = [
     {
         "target_ip": node["target_ip"],
-        "target_sport": node["target_sport"],
-        "target_eport": node["target_eport"],
+        "target_port": node["target_port"],
         "coordinator_ip": node["coordinator_ip"],
         "coordinator_port": node["coordinator_port"],
+        "replicator_ip": node["target_ip"],
         "replicator_port": node["replicator_port"]
     }
     for node in nodes_data
@@ -71,7 +71,7 @@ for idx, node in enumerate(nodes_data):
     config = {
         "cluster": cluster_section,
         "cache_server_ip": node["target_ip"],
-        "cache_server_sport": node["target_sport"],
+        "cache_port": node["target_port"],
         "coordinator_ip": node["coordinator_ip"],
         "coordinator_port": node["coordinator_port"],
         "partitions": 1024,
@@ -80,7 +80,7 @@ for idx, node in enumerate(nodes_data):
         "hello_delay": 10,
         "force_start_delay": 20,
         "cache_stat_port": node["stat_port"],
-        "heartbit": 5,
+        "heartbeat": 5,
         "replica": {
             "port": node["replicator_port"],
             "ip": node["target_ip"],
