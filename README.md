@@ -14,4 +14,5 @@
 | [migration](migration) | Пошаговая миграция с Redis, грабли (RU/EN) |
 | [clients](clients) | Описание gRPC API для авторов клиентов (RU/EN) |
 | [cluster-compose](cluster-compose) | Готовый docker-compose 3-нодного кластера + генератор конфигов |
+| [charging-emulator](charging-emulator) | Нагрузочный эмулятор чарджинга с контролем минуса: HurriCache (CAS) vs PostgreSQL |
 | [dashboards](dashboards) | Дашборд Grafana |
