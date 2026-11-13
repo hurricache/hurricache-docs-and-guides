@@ -3,6 +3,7 @@ package com.hurricache.emulator;
 import com.hurricache.client.FastCacheAsyncSmartClient;
 import com.hurricache.client.intf.HurriCacheClientInterface;
 import com.hurricache.client.intf.Variant;
+import com.hurricache.grpc.AtomicCasRes;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -11,8 +12,9 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Charging via HurriCache. The balance is a typed int64 scalar (key "balance:<msisdn>").
- * Conditional debit is a CAS loop "read -> check sufficiency -> compareAndSet";
- * the loser of a race retries instantly, without locks. Refund is an atomic add.
+ * Conditional debit is a CAS loop "read -> check sufficiency -> compareAndSet"; a failed
+ * compareAndSet already carries the current value, so a retry costs no extra read.
+ * Refund is an atomic add.
  */
 public final class HurriCacheChargingEngine implements ChargingEngine {
 
@@ -27,18 +29,24 @@ public final class HurriCacheChargingEngine implements ChargingEngine {
     @Override
     public boolean charge(String account, long amount) throws Exception {
         String key = KEY_PREFIX + account;
+        Variant v = cache.get(key).get();
+        if (v == null) {
+            return false;
+        }
+        long balance = v.longValue();
         while (true) {
-            Variant v = cache.get(key).get();
-            if (v == null) {
-                return false;
-            }
-            long balance = v.longValue();
             if (balance < amount) {
                 return false;
             }
-            if (cache.compareAndSet(key, balance, balance - amount).get().getResult()) {
+            AtomicCasRes res = cache.compareAndSet(key, balance, balance - amount).get();
+            if (res.getResult()) {
                 return true;
             }
+            if (!res.hasExpected()) {
+                return false; // the key disappeared concurrently
+            }
+            // failed CAS returns the current value — retry without an extra get
+            balance = res.getExpected().getValueUnordered().getValue().getIntPayload();
         }
     }
 
