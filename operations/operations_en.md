@@ -35,9 +35,12 @@ What to watch first:
 
 ## CPU pinning
 
-- Explicit offsets in the config: `cpu_pin_offset` (worker threads) and
-  `replica.cpu_pin_offset` (replication) — threads are pinned to cores starting at the
-  offset.
+- The `cpu_pinning` config section: explicit core lists per thread group —
+  `cache_workers_cpu_ids`, `replication_server_workers_cpu_ids`,
+  `replication_client_workers_cpu_ids`, `redis_proxy_workers_cpu_ids` and
+  `defer_deleter_cpu_id`. Cores are given as a comma-separated string (`"0,1,2"`)
+  or a YAML list; an empty list means no pinning; more threads than cores wraps
+  around round-robin. See `server-config/server_config_en.md` for details.
 - **`HURRICACHE_WORKER_CORES`** (env, e.g. `HURRICACHE_WORKER_CORES=1,2,3`):
   pins the **internal gRPC event-engine worker threads** (library threads) to the listed
   cores. The server prints a confirmation on startup. Use it to separate the gRPC network

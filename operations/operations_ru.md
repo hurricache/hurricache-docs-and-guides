@@ -35,8 +35,12 @@
 
 ## CPU pinning
 
-- Явные смещения в конфиге: `cpu_pin_offset` (рабочие потоки) и `replica.cpu_pin_offset`
-  (репликация) — потоки пинятся к ядрам начиная со смещения.
+- Секция `cpu_pinning` в конфиге: явные списки ядер для каждой группы потоков —
+  `cache_workers_cpu_ids`, `replication_server_workers_cpu_ids`,
+  `replication_client_workers_cpu_ids`, `redis_proxy_workers_cpu_ids` и
+  `defer_deleter_cpu_id`. Ядра задаются через запятую (`"0,1,2"`) или YAML-списком;
+  пустой список — без пиннинга; потоков больше ядер — раскладка по кругу.
+  Подробности — в `server-config/server_config_ru.md`.
 - **`HURRICACHE_WORKER_CORES`** (env, например `HURRICACHE_WORKER_CORES=1,2,3`):
   пинит **внутренние потоки gRPC event engine** (worker threads библиотеки) на
   перечисленные ядра. Сервер при старте печатает подтверждение в лог.

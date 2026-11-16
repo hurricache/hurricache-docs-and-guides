@@ -23,7 +23,6 @@ coordinator_ip: 192.168.0.123
 coordinator_port: 61000
 partitions: 1024
 num_threads: 4
-cpu_pin_offset: 4
 hello_delay: 10
 force_start_delay: 20
 cache_stat_port: 8081
@@ -32,4 +31,7 @@ replica:
   port: 62000
   ip: 192.168.0.123
   num_rep_threads: 2
-  cpu_pin_offset: 10
+
+cpu_pinning:
+  cache_workers_cpu_ids: "4,5,6,7"
+  replication_server_workers_cpu_ids: "10,11"

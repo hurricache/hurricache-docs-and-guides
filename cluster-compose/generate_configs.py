@@ -39,17 +39,17 @@ nodes_data = [
     {
         "target_ip": ip_node0, "target_port": 50000,
         "coordinator_ip": ip_node0, "coordinator_port": 51000,
-        "replicator_port": 52000, "stat_port": 8080, "cpu_pin_offset": 0, "rep_cpu_pin_offset": 8
+        "replicator_port": 52000, "stat_port": 8080, "cache_cpu_ids": "0,1,2,3", "rep_cpu_ids": "8,9"
     },
     {
         "target_ip": ip_node1, "target_port": 60000,
         "coordinator_ip": ip_node1, "coordinator_port": 61000,
-        "replicator_port": 62000, "stat_port": 8081, "cpu_pin_offset": 4, "rep_cpu_pin_offset": 10
+        "replicator_port": 62000, "stat_port": 8081, "cache_cpu_ids": "4,5,6,7", "rep_cpu_ids": "10,11"
     },
     {
         "target_ip": ip_node2, "target_port": 20000,
         "coordinator_ip": ip_node2, "coordinator_port": 21000,
-        "replicator_port": 22000, "stat_port": 8082, "cpu_pin_offset": 8, "rep_cpu_pin_offset": 12
+        "replicator_port": 22000, "stat_port": 8082, "cache_cpu_ids": "8,9,10,11", "rep_cpu_ids": "12,13"
     }
 ]
 
@@ -76,7 +76,6 @@ for idx, node in enumerate(nodes_data):
         "coordinator_port": node["coordinator_port"],
         "partitions": 1024,
         "num_threads": 4,
-        "cpu_pin_offset": node["cpu_pin_offset"],
         "hello_delay": 10,
         "force_start_delay": 20,
         "cache_stat_port": node["stat_port"],
@@ -84,8 +83,11 @@ for idx, node in enumerate(nodes_data):
         "replica": {
             "port": node["replicator_port"],
             "ip": node["target_ip"],
-            "num_rep_threads": 2,
-            "cpu_pin_offset": node["rep_cpu_pin_offset"]
+            "num_rep_threads": 2
+        },
+        "cpu_pinning": {
+            "cache_workers_cpu_ids": node["cache_cpu_ids"],
+            "replication_server_workers_cpu_ids": node["rep_cpu_ids"]
         }
     }
 

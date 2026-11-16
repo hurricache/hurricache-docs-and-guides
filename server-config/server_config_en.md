@@ -15,7 +15,10 @@ cache_port: 50000
 
 partitions: 1024
 num_threads: 2
-cpu_pin_offset: 0
+
+cpu_pinning:
+  cache_workers_cpu_ids: "0,1"
+  defer_deleter_cpu_id: 2
 
 storage_directory: /var/lib/hurricache
 snapshot_interval_sec: 300
@@ -72,7 +75,6 @@ cache_stat_port: 8080
 
 partitions: 1024
 num_threads: 4
-cpu_pin_offset: 0
 
 heartbeat: 5
 hello_delay: 10
@@ -86,7 +88,13 @@ replica:
   ip: 192.168.0.11
   port: 52000
   num_rep_threads: 2
-  cpu_pin_offset: 8
+
+cpu_pinning:
+  cache_workers_cpu_ids: "0,1,2,3"
+  replication_server_workers_cpu_ids: "8,9"
+  replication_client_workers_cpu_ids: "10"
+  redis_proxy_workers_cpu_ids: "11"
+  defer_deleter_cpu_id: 12
 
 server_grpc_channel_args:
   - "grpc.max_concurrent_streams=-1i"
@@ -145,7 +153,10 @@ List of cluster nodes. Omit the whole section for standalone mode.
 |---|---|---|---|
 | `partitions` | int | `1024` | Number of partitions (shards). Must be a power of two |
 | `num_threads` | int | `4` | Number of worker threads |
-| `cpu_pin_offset` | int | `-1` (off) | CPU offset for worker thread pinning |
+
+Thread-to-core pinning is configured in a dedicated `cpu_pinning` section (see
+below). The legacy `cpu_pin_offset` parameter was removed: if present in the
+config it is ignored with a log warning.
 
 ### Storage and snapshots
 
@@ -164,7 +175,30 @@ Local replication service of the node (cluster mode).
 | `ip` | string | `127.0.0.1` | Replication service IP |
 | `port` | int | `35000` | Replication service port |
 | `num_rep_threads` | int | `2` | Number of replication threads |
-| `cpu_pin_offset` | int | `-1` (off) | CPU offset for replication threads |
+
+### `cpu_pinning` section (thread-to-core pinning)
+
+Optional. Explicitly pins server threads to CPU cores.
+
+| Field | Type | Threads |
+|---|---|---|
+| `cache_workers_cpu_ids` | list | Cache gRPC server workers (`num_threads`) |
+| `replication_server_workers_cpu_ids` | list | Replication server workers (`replica.num_rep_threads`) |
+| `replication_client_workers_cpu_ids` | list | Replication client pool CQ threads |
+| `redis_proxy_workers_cpu_ids` | list | Redis proxy relay pool CQ threads |
+| `defer_deleter_cpu_id` | single core | Deferred-delete thread |
+
+Semantics:
+
+- A list is given as a YAML sequence (`[0,1,2]`) or a comma-separated string (`"0,1,2"`).
+- An empty or missing list means no pinning — threads are scheduled by the OS.
+- If there are more threads than cores in the list, assignment wraps around:
+  thread `i` is pinned to core `ids[i % len(ids)]`.
+- A core id beyond the available CPUs is logged as a warning; pinning of that
+  thread is skipped.
+
+Example: with `num_threads: 4` and `cache_workers_cpu_ids: "0,1"`, threads 0
+and 2 land on core 0, threads 1 and 3 — on core 1.
 
 ### `redis_connector` section (Redis-compatible interface)
 
@@ -211,7 +245,7 @@ export HURRICACHE_WORKER_CORES=0,1,2,3
 ```
 
 It is recommended to give the gRPC threads the same cores as the cache
-worker threads (see `cpu_pin_offset` + `num_threads`), or neighboring cores
+worker threads (see `cpu_pinning.cache_workers_cpu_ids` + `num_threads`), or neighboring cores
 on the same NUMA node. If the variable is not set, no pinning is performed
 and threads are scheduled by the OS. On startup the server logs
 `GRPC will use worker cores: ...`, confirming the variable was picked up.

@@ -15,7 +15,10 @@ cache_port: 50000
 
 partitions: 1024
 num_threads: 2
-cpu_pin_offset: 0
+
+cpu_pinning:
+  cache_workers_cpu_ids: "0,1"
+  defer_deleter_cpu_id: 2
 
 storage_directory: /var/lib/hurricache
 snapshot_interval_sec: 300
@@ -72,7 +75,6 @@ cache_stat_port: 8080
 
 partitions: 1024
 num_threads: 4
-cpu_pin_offset: 0
 
 heartbeat: 5
 hello_delay: 10
@@ -86,7 +88,13 @@ replica:
   ip: 192.168.0.11
   port: 52000
   num_rep_threads: 2
-  cpu_pin_offset: 8
+
+cpu_pinning:
+  cache_workers_cpu_ids: "0,1,2,3"
+  replication_server_workers_cpu_ids: "8,9"
+  replication_client_workers_cpu_ids: "10"
+  redis_proxy_workers_cpu_ids: "11"
+  defer_deleter_cpu_id: 12
 
 server_grpc_channel_args:
   - "grpc.max_concurrent_streams=-1i"
@@ -145,7 +153,10 @@ replication_grpc_channel_args:
 |---|---|---|---|
 | `partitions` | int | `1024` | Число партиций (шардов). Должно быть степенью двойки |
 | `num_threads` | int | `4` | Число рабочих потоков обработки запросов |
-| `cpu_pin_offset` | int | `-1` (выкл.) | Смещение CPU для привязки рабочих потоков (pinning) |
+
+Пиннинг потоков к ядрам CPU задаётся отдельной секцией `cpu_pinning` (см. ниже).
+Старый параметр `cpu_pin_offset` удалён: при наличии в конфиге он игнорируется
+с предупреждением в логе.
 
 ### Хранилище и снапшоты
 
@@ -164,7 +175,30 @@ replication_grpc_channel_args:
 | `ip` | string | `127.0.0.1` | IP сервиса репликации |
 | `port` | int | `35000` | Порт сервиса репликации |
 | `num_rep_threads` | int | `2` | Число потоков репликации |
-| `cpu_pin_offset` | int | `-1` (выкл.) | Смещение CPU для потоков репликации |
+
+### Секция `cpu_pinning` (привязка потоков к ядрам CPU)
+
+Опционально. Позволяет явно закрепить потоки сервера за ядрами процессора.
+
+| Поле | Тип | Потоки |
+|---|---|---|
+| `cache_workers_cpu_ids` | список | Рабочие потоки cache gRPC-сервера (`num_threads`) |
+| `replication_server_workers_cpu_ids` | список | Потоки сервера репликации (`replica.num_rep_threads`) |
+| `replication_client_workers_cpu_ids` | список | CQ-потоки пула клиента репликации |
+| `redis_proxy_workers_cpu_ids` | список | CQ-потоки relay-пула Redis-прокси |
+| `defer_deleter_cpu_id` | одно ядро | Служебный поток отложенного удаления |
+
+Семантика:
+
+- Список задаётся YAML-списком (`[0,1,2]`) или строкой через запятую (`"0,1,2"`).
+- Пустой или отсутствующий список — пиннинга нет, потоки планируются ОС.
+- Если потоков больше, чем ядер в списке, раскладка идёт по кругу:
+  поток `i` закрепляется за ядром `ids[i % len(ids)]`.
+- Номер ядра, превышающий доступные, логируется как warning, пиннинг этого
+  потока пропускается.
+
+Пример: при `num_threads: 4` и `cache_workers_cpu_ids: "0,1"` потоки 0 и 2
+сядут на ядро 0, потоки 1 и 3 — на ядро 1.
 
 ### Секция `redis_connector` (Redis-совместимый интерфейс)
 
@@ -211,7 +245,7 @@ export HURRICACHE_WORKER_CORES=0,1,2,3
 ```
 
 Рекомендуется выделять gRPC-потокам те же ядра, что и рабочим потокам кеша
-(см. `cpu_pin_offset` + `num_threads`), либо соседние ядра того же NUMA-узла.
+(см. `cpu_pinning.cache_workers_cpu_ids` + `num_threads`), либо соседние ядра того же NUMA-узла.
 Если переменная не задана, пиннинг не выполняется и потоки планируются ОС.
 При старте сервер выводит в лог строку `GRPC will use worker cores: ...`,
 по которой видно, что переменная подхвачена.
