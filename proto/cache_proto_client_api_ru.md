@@ -254,6 +254,33 @@
 - `getAndDeleteValueInContainer`: элемент не найден → `NOT_FOUND` (единообразно для MAP и ORDERED_MAP). Для ORDERED_MAP удаляются все записи с совпадающим ключом, возвращается первое значение.
 - `updateValueInContainer` и `updateValue` возвращают **старое** значение в `UpdateValueResponse.value`.
 
+### 4.8 Время отправки клиента (`x-hc-client-ts-bin`)
+
+Каждая пишущая операция штампуется на сервере парой `(version, timestamp)` — это основа
+версионной репликации и разрешения конфликтов. Источник времени для `timestamp`:
+
+- **Клиент присылает metadata `x-hc-client-ts-bin`** — время отправки запроса в миллисекундах
+  от Unix epoch (UTC/GMT-0), **uint64 бинарём (8 байт, little-endian)** — суффикс `-bin`
+  обязателен (это бинарная gRPC-метадата). Это рекомендуемый режим: штамп версии ставится
+  по часам клиента.
+- **Заголовка нет (старый клиент)** — сервер берёт время прибытия (начало обработки,
+  свои часы GMT-0) и пишет в лог предупреждение «old client, please update» (раз на поток).
+
+Побочный эффект — **честное отклонение опоздавших записей** (stale write): если по ключу
+уже есть версия с `stored_ts > client_ts` (запрос задержался сетью, а ключ за это время
+изменился), сервер отклоняет запись с `ABORTED` и текстом
+`Write rejected: arrived too late. stored update ts=X, client send ts=Y`.
+Это не сбой, а защита от перезаписи более новых данных: клиенту следует перечитать
+значение и повторить операцию (см. `error-handling`).
+
+Замечания:
+
+- Часы клиента и сервера должны быть синхронизированы (NTP) — штампы сравниваются
+  между собой по всему кластеру.
+- Реплицированные команды везут исходный клиентский `timestamp` дальше по кластеру —
+  вся кластерная консистентность версий живёт в единой шкале клиентских часов.
+- Батчевые и стримовые вызовы штампуются тем же заголовком.
+
 ---
 
 ## 5. Сервис `DataReplicationService` (внутренний, справочно)
@@ -262,26 +289,45 @@
 
 | RPC | Request | Response |
 |---|---|---|
-| `batchMessage` | `BatchMessage{repeated BatchSingleMessage{ReplicationCommandType, BatchCommand}}` | `BoolResponse` |
-| `lockObject` / `unlockObject` | `LockRequest` / `UnLockRequest` | `BoolResponse` |
-| `setTtl` | `TtlRequest` | `BoolResponse` |
-| `updateValue` | `UpdateRequest` | `BoolResponse` |
-| `createKeyValue` | `CreateRequest` | `BoolResponse` |
-| `remove` | `GetRequest` | `BoolResponse` |
-| `createContainer` | `CreateContainerRequest` | `BoolResponse` |
-| `updateValueInContainer` | `UpdateContainerRequest` | `BoolResponse` |
-| `removeTail` / `removeHead` | `GetRequest` | `BoolResponse` |
-| `removeElementAtPosition` | `KeyPositionRequest` (одна позиция или диапазон `[pos, end]`) | `BoolResponse` |
-| `removeFromContainerByKeyValue` | `RemoveFromContainerRequest` | `BoolResponse` |
-| `removeInContainer` | `ContainerGetRequest` | `BoolResponse` |
-| `addElementToTail` / `addElementToHead` / `addElement` | `AddToRequest` | `BoolResponse` |
-| `addElementToPositionByValue` | `AddToValRequest` | `BoolResponse` |
-| `atomicExchange/Add/Sub/Or/And/Xor` | `CreateRequest` | `BoolResponse` |
-| `atomicCompareAndSet` | `AtomicCas` | `BoolResponse` |
+| `batchMessage` | `BatchMessage{repeated BatchSingleMessage{ReplicationCommandType, BatchCommand}}` | `RepResponse` |
+| `singleMessage` | `BatchSingleMessage` | `RepResponse` |
 
-`BatchCommand` — union-обёртка (все поля `optional`) над запросами: `LockRequest`, `UnLockRequest`, `TtlRequest`, `UpdateRequest`, `CreateRequest`, `GetRequest`, `CreateContainerRequest`, `KeyPositionRequest`, `KeyRangeRequest`, `AddToRequest`, `AddToValRequest`, `RemoveFromContainerRequest`, `ContainerGetRequest`, `UpdateContainerRequest`, `AtomicCas`. Тип команды задаётся полем `ReplicationCommandType` в `BatchSingleMessage` (значения см. в `cache.proto`, строки 310–338).
+Все типы команд репликации (`LOCK_REQUEST`, `REMOVE`, `CREATE_VALUE`, `UPDATE_VALUE`,
+`CREATE_CONTAINER`, `ADD_TO_*`, `REMOVE_*`, `SET_TTL`, `ATOMIC_*`, `UPDATE_IN_CONTAINER` и т.д.)
+идут через эти два RPC: команда упаковывается в `BatchCommand` (union-обёртка над
+`LockRequest`, `UnLockRequest`, `TtlRequest`, `UpdateRequest`, `CreateRequest`, `GetRequest`,
+`CreateContainerRequest`, `KeyPositionRequest`, `KeyRangeRequest`, `AddToRequest`,
+`AddToValRequest`, `RemoveFromContainerRequest`, `ContainerGetRequest`,
+`UpdateContainerRequest`, `AtomicCas`), тип — в `ReplicationCommandType`
+(значения см. в `cache.proto`).
 
-Отличие от публичного сервиса: все ответы — `BoolResponse`, ошибки маршрутизации/локов не применяются (ноды доверенные).
+### Версионная репликация
+
+`BatchCommand` несёт метаданные версии:
+
+| Поле | Назначение |
+|---|---|
+| `uint64 version` | Монотонный счётчик мутаций ключа на ноде-источнике. `0` = «без версии» (миграция, свежий create) — применяется без проверок. |
+| `uint64 timestamp` | Время мутации (epoch мс, шкала клиентских часов — см. 4.8). |
+| `optional bool restore` | `true` = это полный слепок ключа (восстановление после сбоя доставки), только для create-операций: применяющая сторона **пересоздаёт** значение поверх устаревшего. |
+
+Правила применения на реплике (упрощённо):
+
+- Скалярные перезаписи (`CREATE_VALUE`, `UPDATE_VALUE`, `SET_TTL`) — LWW по `timestamp`:
+  команда с `stored_ts > cmd_ts` отбрасывается (доставка считается успешной).
+- Остальные команды — дедупликация по `version`: `stored_v >= cmd_v` → skip.
+- `ADD_TO_TAIL`, `ADD_TO_FRONT`, `ATOMIC_ADD`, `ATOMIC_SUB` — версия игнорируется
+  (конкурентные операции с двух нод легитимны); метадата реплики подтягивается до
+  `max(stored, cmd)`, чтобы локальная версия не отставала.
+- Локи и `REMOVE` — без версионных проверок.
+- Применённая команда перезаписывает `version/timestamp` значения — оно источник истины.
+
+`RepResponse`: `status` (все команды применены) и `error_indexes` — индексы
+отклонённых команд в батче. Отправитель на отклонённые write-команды отвечает
+**восстановлением стейта**: читает актуальное значение ключа и шлёт его заново как
+`CREATE_VALUE`/`CREATE_CONTAINER` с `restore=true` (вместо повторной дельты).
+
+Отличие от публичного сервиса: ошибки маршрутизации/локов не применяются (ноды доверенные).
 
 ---
 
@@ -310,3 +356,4 @@
 4. Кэшируйте `KeyHint` из ответов и подставляйте в последующие запросы по тому же ключу — ускоряет маршрутизацию.
 5. Для стримов читайте до `OK`, собирая батчи по типу контейнера (см. 4.6); не забудьте про пары ключ/значение по индексу для MAP-типов.
 6. Проверяйте presence `optional`-полей (`ttl` в `TtlResponse`, `value` в `ValueResponse` и т.д.), а не значения по умолчанию.
+7. Присылайте metadata `x-hc-client-ts-bin` (время отправки, epoch мс UTC) на каждый вызов — иначе сервер штампует версии своим временем и пишет warning в лог (см. 4.8). Обрабатывайте `ABORTED` (stale write) как «перечитать и повторить».

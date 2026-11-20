@@ -3,7 +3,13 @@
 ## Метрики Prometheus
 
 - Нода экспортирует метрики на `cache_stat_port` (по умолчанию 8080), путь `/metrics`.
-- Готовый дашборд Grafana: [../dashboards/dashboard.json](../dashboards/dashboard.json).
+- Готовые дашборды Grafana в [../dashboards](../dashboards) — подхватываются compose-примером автоматически, либо импортируйте вручную:
+  - `fastcache-overview.json` — обзор кластера (throughput, latency, память, партиции)
+  - `fastcache-scalars.json` — скалярные операции, атомики и локи
+  - `fastcache-containers.json` — жизненный цикл контейнеров, head/tail, позиционные и map/set операции
+  - `fastcache-replication.json` — глубина очереди репликации по target, throughput sender/receiver, ошибки
+  - `fastcache-resp.json` — операции RESP-коннектора по семействам данных
+  - `fastcache-client-api.json` — вызовы smart client / relay по типам операций
 - Compose-пример поднимает Prometheus + Grafana вместе с кластером:
   [../cluster-compose](../cluster-compose).
 
@@ -16,6 +22,13 @@
 | счётчики снапшотов | частота и длительность фоновых сбросов |
 | ошибки по операциям | проблемы клиентов/типов |
 | статус лицензии | печатается в потоке статистики stdout |
+| `replication_queue_pending_commands{target}` (gauge) | Команд репликации в очереди к каждой ноде. Рост = реплика отстаёт/недоступна; главный алерт отставания реплики |
+| `cache_partition_last_snapshot_ts{partition}` (gauge) | Время (epoch мс) последнего снапшота партиции. Отставание от текущего времени при активной записи — снапшоты не успевают |
+
+Снапшот партиции штампуется **в начале** сериализации, поэтому
+`cache_partition_last_snapshot_ts` одновременно задаёт водную линию для инкрементальной
+миграции (в разработке): при восстановлении ноды будут пересылаться только ключи,
+изменённые после этого времени.
 
 ## Снапшоты
 

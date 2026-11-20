@@ -3,7 +3,13 @@
 ## Prometheus metrics
 
 - A node exports metrics on `cache_stat_port` (default 8080), path `/metrics`.
-- Ready-made Grafana dashboard: [../dashboards/dashboard.json](../dashboards/dashboard.json).
+- Ready-made Grafana dashboards in [../dashboards](../dashboards) — auto-provisioned by the compose example, or import manually:
+  - `fastcache-overview.json` — cluster overview (throughput, latency, memory, partitions)
+  - `fastcache-scalars.json` — scalar operations, atomics and locks
+  - `fastcache-containers.json` — container lifecycle, head/tail, positional/range and map/set operations
+  - `fastcache-replication.json` — replication queue depth per target, sender/receiver throughput and errors
+  - `fastcache-resp.json` — RESP connector operations by data family
+  - `fastcache-client-api.json` — smart-client / relay calls by operation type
 - The compose example brings up Prometheus + Grafana with the cluster:
   [../cluster-compose](../cluster-compose).
 
@@ -16,6 +22,13 @@ What to watch first:
 | snapshot counters | frequency and duration of background flushes |
 | per-operation error counters | client/type problems |
 | license status | printed in the stdout statistics stream |
+| `replication_queue_pending_commands{target}` (gauge) | Replication commands queued per peer node. Growth = replica falling behind or unreachable; the main replication-lag alert |
+| `cache_partition_last_snapshot_ts{partition}` (gauge) | Timestamp (epoch ms) of the partition's last snapshot. Lagging behind wall clock under active writes = snapshots can't keep up |
+
+A partition snapshot is stamped **at the start** of serialization, so
+`cache_partition_last_snapshot_ts` also defines the watermark for incremental migration
+(in development): when a node recovers, only keys changed after this time will be
+transferred.
 
 ## Snapshots
 

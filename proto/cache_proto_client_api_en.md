@@ -254,6 +254,34 @@ The server uses a single error mapping (`checkError`):
 - `getAndDeleteValueInContainer`: element not found → `NOT_FOUND` (uniform for MAP and ORDERED_MAP). For ORDERED_MAP all entries with a matching key are removed and the first value is returned.
 - `updateValueInContainer` and `updateValue` return the **old** value in `UpdateValueResponse.value`.
 
+### 4.8 Client send time (`x-hc-client-ts-bin`)
+
+Every write is stamped by the server with a `(version, timestamp)` pair — the foundation
+of versioned replication and conflict resolution. Source of the `timestamp`:
+
+- **The client sends the `x-hc-client-ts-bin` metadata header** — request send time in
+  milliseconds since Unix epoch (UTC/GMT-0), **uint64 binary (8 bytes, little-endian)** —
+  the `-bin` suffix is required (it is a binary gRPC metadata key). This is the
+  recommended mode: version timestamps use the client's clock.
+- **No header (old client)** — the server falls back to arrival time (start of request
+  processing, its own GMT-0 clock) and logs an "old client, please update" warning
+  (once per thread).
+
+A useful side effect is **honest rejection of late writes** (stale write): if the key
+already holds a version with `stored_ts > client_ts` (the request was delayed by the
+network while the key changed), the server rejects the write with `ABORTED` and the
+message `Write rejected: arrived too late. stored update ts=X, client send ts=Y`.
+This is protection, not a failure: the client should re-read the value and retry
+(see `error-handling`).
+
+Notes:
+
+- Client and server clocks must be synchronized (NTP) — timestamps are compared
+  across the whole cluster.
+- Replicated commands carry the original client `timestamp` further through the
+  cluster — version consistency lives in the single domain of client clocks.
+- Batch and streaming calls use the same header.
+
 ---
 
 ## 5. `DataReplicationService` (internal, reference only)
@@ -262,26 +290,45 @@ Implemented in `grpc/src/async_replication_server.cxx` (not part of the client A
 
 | RPC | Request | Response |
 |---|---|---|
-| `batchMessage` | `BatchMessage{repeated BatchSingleMessage{ReplicationCommandType, BatchCommand}}` | `BoolResponse` |
-| `lockObject` / `unlockObject` | `LockRequest` / `UnLockRequest` | `BoolResponse` |
-| `setTtl` | `TtlRequest` | `BoolResponse` |
-| `updateValue` | `UpdateRequest` | `BoolResponse` |
-| `createKeyValue` | `CreateRequest` | `BoolResponse` |
-| `remove` | `GetRequest` | `BoolResponse` |
-| `createContainer` | `CreateContainerRequest` | `BoolResponse` |
-| `updateValueInContainer` | `UpdateContainerRequest` | `BoolResponse` |
-| `removeTail` / `removeHead` | `GetRequest` | `BoolResponse` |
-| `removeElementAtPosition` | `KeyPositionRequest` (single position or range `[pos, end]`) | `BoolResponse` |
-| `removeFromContainerByKeyValue` | `RemoveFromContainerRequest` | `BoolResponse` |
-| `removeInContainer` | `ContainerGetRequest` | `BoolResponse` |
-| `addElementToTail` / `addElementToHead` / `addElement` | `AddToRequest` | `BoolResponse` |
-| `addElementToPositionByValue` | `AddToValRequest` | `BoolResponse` |
-| `atomicExchange/Add/Sub/Or/And/Xor` | `CreateRequest` | `BoolResponse` |
-| `atomicCompareAndSet` | `AtomicCas` | `BoolResponse` |
+| `batchMessage` | `BatchMessage{repeated BatchSingleMessage{ReplicationCommandType, BatchCommand}}` | `RepResponse` |
+| `singleMessage` | `BatchSingleMessage` | `RepResponse` |
 
-`BatchCommand` is a union wrapper (all fields `optional`) over the request types: `LockRequest`, `UnLockRequest`, `TtlRequest`, `UpdateRequest`, `CreateRequest`, `GetRequest`, `CreateContainerRequest`, `KeyPositionRequest`, `KeyRangeRequest`, `AddToRequest`, `AddToValRequest`, `RemoveFromContainerRequest`, `ContainerGetRequest`, `UpdateContainerRequest`, `AtomicCas`. The command kind is set by the `ReplicationCommandType` field in `BatchSingleMessage` (values in `cache.proto`, lines 310–338).
+All replication command kinds (`LOCK_REQUEST`, `REMOVE`, `CREATE_VALUE`, `UPDATE_VALUE`,
+`CREATE_CONTAINER`, `ADD_TO_*`, `REMOVE_*`, `SET_TTL`, `ATOMIC_*`, `UPDATE_IN_CONTAINER`,
+etc.) go through these two RPCs: the command is packed into `BatchCommand` (a union
+wrapper over `LockRequest`, `UnLockRequest`, `TtlRequest`, `UpdateRequest`,
+`CreateRequest`, `GetRequest`, `CreateContainerRequest`, `KeyPositionRequest`,
+`KeyRangeRequest`, `AddToRequest`, `AddToValRequest`, `RemoveFromContainerRequest`,
+`ContainerGetRequest`, `UpdateContainerRequest`, `AtomicCas`), with the kind set by
+`ReplicationCommandType` (values in `cache.proto`).
 
-Difference from the public service: all responses are `BoolResponse`; routing/lock errors do not apply (nodes are trusted).
+### Versioned replication
+
+`BatchCommand` carries version metadata:
+
+| Field | Purpose |
+|---|---|
+| `uint64 version` | Monotonic per-key mutation counter on the source node. `0` = "unversioned" (migration, fresh create) — applied without checks. |
+| `uint64 timestamp` | Mutation time (epoch ms, client-clock domain — see 4.8). |
+| `optional bool restore` | `true` = full key snapshot (recovery after a failed delivery), create-operations only: the receiver **recreates** the value on top of the stale one. |
+
+Apply rules on the replica (simplified):
+
+- Scalar overwrites (`CREATE_VALUE`, `UPDATE_VALUE`, `SET_TTL`) — LWW by `timestamp`:
+  a command with `stored_ts > cmd_ts` is dropped (delivery counts as successful).
+- Other commands — dedup by `version`: `stored_v >= cmd_v` → skip.
+- `ADD_TO_TAIL`, `ADD_TO_FRONT`, `ATOMIC_ADD`, `ATOMIC_SUB` — the version is ignored
+  (concurrent operations from two nodes are legitimate); replica metadata is pulled up
+  to `max(stored, cmd)` so the local version never falls behind.
+- Locks and `REMOVE` — no version checks.
+- An applied command rewrites the value's `version/timestamp` — it is the source of truth.
+
+`RepResponse`: `status` (all commands applied) and `error_indexes` — indexes of the
+rejected batch entries. For rejected write commands the sender performs **state
+restore**: it reads the current key value and resends it as `CREATE_VALUE`/
+`CREATE_CONTAINER` with `restore=true` (instead of retrying the delta).
+
+Difference from the public service: routing/lock errors do not apply (nodes are trusted).
 
 ---
 
@@ -310,3 +357,4 @@ Difference from the public service: all responses are `BoolResponse`; routing/lo
 4. Cache `KeyHint` values from responses and pass them back in subsequent requests for the same key — this speeds up routing.
 5. For streams, read until `OK`, assembling chunks according to the container type (see 4.6); remember the index-paired key/value arrays for MAP types.
 6. Check presence of `optional` fields (`ttl` in `TtlResponse`, `value` in `ValueResponse`, etc.) rather than relying on default values.
+7. Send the `x-hc-client-ts-bin` metadata (send time, epoch ms UTC) on every call — otherwise the server stamps versions with its own clock and logs a warning (see 4.8). Handle `ABORTED` (stale write) as "re-read and retry".
