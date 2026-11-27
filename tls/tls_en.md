@@ -212,6 +212,55 @@ redis-cli -p 6379 --tls --cacert /etc/hurricache/tls/ca.pem PING   # PONG
 redis-cli -p 6379 PING   # Protocol error — expected on a TLS port
 ```
 
+## Performance measurements (2026-11-27)
+
+Bench setup:
+
+- 3 nodes on one host (192.168.0.123), release build `cmake-build-releasecluster`;
+- TLS with mTLS on all four services (`tls.grpc`, `tls.replica`, `tls.coordinator`, `tls.redis_proxy`),
+  test self-signed CA, service certificates with a shared CN (`hurricache`) —
+  configs `config-tls-cluster-{0,1,2}.yaml`, certificates in `tls-test-certs/` of the server repo;
+- cluster start: `./start_cluster_tls`;
+- Java client: `hurricache-java-client`, `TlsConfig` with `caFile` + `certFile/keyFile` (mTLS)
+  and `serverName="hurricache"`; JVM: `-XX:+UseZGC -Xmx8g`.
+
+Run command:
+
+```bash
+mvn test -Dtest='Smart*Stress*' \
+  -Dhurricache.tls.ca=$T/ca.pem \
+  -Dhurricache.tls.cert=$T/client-cert.pem \
+  -Dhurricache.tls.key=$T/client-key.pem \
+  -Dhurricache.tls.serverName=hurricache \
+  -DargLine="-XX:+UseZGC -Xmx8g"
+```
+
+Results (164 tests, ~17 min):
+
+- **162/164 PASS**, 2 `CANCELLED` errors in `SmartClientScalarGetMetricsStressTest`
+  (race/timeout, not TLS-related — under review);
+- throughput: scalars/atomics/ranges ~95-140k OPS; container write ops
+  (insert/removeAt) ~16-75k OPS; bulk ~50-120k OPS;
+- latency: p50 0.8-3.2 ms on reads and simple writes, p95 1.6-12.8 ms;
+### TLS vs plaintext comparison (same bench, same run)
+
+| Workload class | TLS, OPS | plaintext, OPS | Delta |
+|---|---|---|---|
+| Scalars/atomics (reads) | ~86-130k | ~84-150k | −5..−15% |
+| Scalars/atomics (writes) | ~77-123k | ~81-134k | −3..−12% |
+| Ranges/Ordered | ~80-124k | ~85-139k | −5..−20% |
+| Container writes (insert/removeAt) | ~16-75k | ~18-80k | −3..−23% |
+| Bulk | ~50-122k | ~51-125k | −1..−7% |
+
+- plaintext run: **164/164 PASS, 0 errors** (incl. `SmartClientScalarGetMetricsStressTest`
+  28/28 — the two CANCELLED errors from the TLS run did not reproduce);
+- typical TLS overhead on this bench: **~5-15% OPS**, p50 grows from ~0.8 to ~1.6 ms
+  on many read operations (localhost workload with tiny base latency, so the
+  relative overhead is more visible);
+- the handshake is paid once per channel, not per RPC; the overhead is the cost of
+  stream encryption/decryption (BoringSSL AES/ChaCha) on both sides. With larger
+  payloads or real network latency the relative overhead is lower.
+
 ## Troubleshooting
 
 | Symptom | Cause |

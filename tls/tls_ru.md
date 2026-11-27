@@ -211,6 +211,56 @@ redis-cli -p 6379 --tls --cacert /etc/hurricache/tls/ca.pem PING   # PONG
 redis-cli -p 6379 PING   # Protocol error — это норма для TLS-порта
 ```
 
+## Замеры производительности (27.11.2026)
+
+Конфигурация стенда:
+
+- 3 ноды на одной машине (192.168.0.123), release-сборка `cmake-build-releasecluster`;
+- TLS с mTLS на всех четырёх сервисах (`tls.grpc`, `tls.replica`, `tls.coordinator`, `tls.redis_proxy`),
+  тестовый self-signed CA, сертификаты сервисов с общим CN (`hurricache`) —
+  конфиги `config-tls-cluster-{0,1,2}.yaml`, сертификаты `tls-test-certs/` в репо сервера;
+- запуск кластера: `./start_cluster_tls` (обёртка над конфигами + `HURRICACHE_WORKER_CORES`);
+- Java-клиент: `hurricache-java-client`, `TlsConfig` с `caFile` + `certFile/keyFile` (mTLS)
+  и `serverName="hurricache"`; JVM: `-XX:+UseZGC -Xmx8g`.
+
+Команда прогона:
+
+```bash
+mvn test -Dtest='Smart*Stress*' \
+  -Dhurricache.tls.ca=$T/ca.pem \
+  -Dhurricache.tls.cert=$T/client-cert.pem \
+  -Dhurricache.tls.key=$T/client-key.pem \
+  -Dhurricache.tls.serverName=hurricache \
+  -DargLine="-XX:+UseZGC -Xmx8g"
+```
+
+Итог прогона (164 теста, ~17 мин):
+
+- **162/164 PASS**, 2 ошибки `CANCELLED` в `SmartClientScalarGetMetricsStressTest`
+  (гонка/таймаут, не связано с TLS — на рассмотрении);
+- throughput: скаляры/атомики/range ~95-140k OPS; контейнерные write-операции
+  (insert/removeAt) ~16-75k OPS; bulk ~50-120k OPS;
+- latency: p50 0.8-3.2 мс на чтениях и простых записи, p95 1.6-12.8 мс;
+### Сравнение TLS vs plaintext (тот же стенд, тот же прогон)
+
+| Класс нагрузки | TLS, OPS | plaintext, OPS | Дельта |
+|---|---|---|---|
+| Скаляры/атомики (reads) | ~86-130k | ~84-150k | −5..−15% |
+| Скаляры/атомики (writes) | ~77-123k | ~81-134k | −3..−12% |
+| Range/Ordered | ~80-124k | ~85-139k | −5..−20% |
+| Контейнерные write (insert/removeAt) | ~16-75k | ~18-80k | −3..−23% |
+| Bulk | ~50-122k | ~51-125k | −1..−7% |
+
+- plaintext-прогон: **164/164 PASS, 0 errors** (в т.ч. `SmartClientScalarGetMetricsStressTest`
+  28/28 — два CANCELLED из TLS-прогона не воспроизвелись);
+- типичный дельта-эффект TLS на этом стенде: **~5-15% по OPS**,
+  p50 растёт с ~0.8 до ~1.6 мс на многих read-операциях (нагрузка localhost,
+  базовая latency маленькая — относительный overhead заметнее);
+- handshake платится один раз на канал, не на RPC; overhead — цена
+  шифрования/расшифровки потока (BoringSSL AES/ChaCha) на обеих сторонах.
+  На нагрузке с более крупными payload'ами или при сетевых задержках относительный
+  overhead будет ниже.
+
 ## Диагностика
 
 | Симптом | Причина |
