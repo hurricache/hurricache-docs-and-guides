@@ -231,6 +231,28 @@ Useful keys:
 | `grpc.enable_channelz` / `grpc.enable_census` / `grpc.enable_load_reporting` | gRPC telemetry; usually `0i` in production |
 | `grpc.keepalive_time_ms` | Keepalive ping interval |
 
+## TLS (`tls` section)
+
+TLS is enabled per service via the `tls` section with `grpc`, `replica`,
+`coordinator`, `redis_proxy` subsections. Each takes `cert` + `key`
+(mandatory together — enables TLS on the service port) and an optional `ca`
+(enables mTLS: the server requires a client certificate, the client verifies
+the server against the CA without hostname verification). An omitted
+subsection keeps the service plain. TLS and plain traffic on the same port
+at the same time is not supported. Details, certificate generation and
+startup examples — see the [tls](../tls) section.
+
+```yaml
+tls:
+  grpc:
+    cert: /etc/hurricache/tls/grpc-cert.pem
+    key:  /etc/hurricache/tls/grpc-key.pem
+    ca:   /etc/hurricache/tls/ca.pem   # optional, enables mTLS
+  replica:     {cert: ..., key: ..., ca: ...}
+  coordinator: {cert: ..., key: ..., ca: ...}
+  redis_proxy: {cert: ..., key: ...}
+```
+
 ## Environment variables
 
 ### `HURRICACHE_WORKER_CORES`

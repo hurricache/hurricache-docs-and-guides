@@ -231,6 +231,27 @@ replication_grpc_channel_args:
 | `grpc.enable_channelz` / `grpc.enable_census` / `grpc.enable_load_reporting` | Телеметрия gRPC; обычно `0i` в проде |
 | `grpc.keepalive_time_ms` | Интервал keepalive-пингов |
 
+## TLS (секция `tls`)
+
+TLS включается посервисно секцией `tls` с подсекциями `grpc`, `replica`,
+`coordinator`, `redis_proxy`. В каждой: `cert` + `key` (обязательны вместе —
+включают TLS на порту сервиса) и опциональный `ca` (включает mTLS: сервер
+требует клиентский сертификат, клиент проверяет сервер по CA без проверки
+hostname). Подсекция не задана — сервис работает без TLS. Одновременно TLS
+и не-TLS на одном порту не поддерживается. Подробности, генерация
+сертификатов и примеры запуска — в разделе [tls](../tls).
+
+```yaml
+tls:
+  grpc:
+    cert: /etc/hurricache/tls/grpc-cert.pem
+    key:  /etc/hurricache/tls/grpc-key.pem
+    ca:   /etc/hurricache/tls/ca.pem   # опционально, включает mTLS
+  replica:     {cert: ..., key: ..., ca: ...}
+  coordinator: {cert: ..., key: ..., ca: ...}
+  redis_proxy: {cert: ..., key: ...}
+```
+
 ## Переменные окружения
 
 ### `HURRICACHE_WORKER_CORES`

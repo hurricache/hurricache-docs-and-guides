@@ -178,6 +178,8 @@ The server uses a single error mapping (`checkError`):
 
 **Exception**: `createKeyValue` and `createContainer` on the wrong node return status `OK` with `KeyHintResponse.relayed = true` (the server forwarded the request itself) — the node address is in the status message.
 
+**Note for tests**: a relayed create is acknowledged at the entry node and lands on the owner asynchronously — the object becomes visible within ~100 ms. Production clients need no special handling; only tests that assert immediately after a create should wait ~100 ms (or poll for existence) when the returned hint has `relayed = true`.
+
 ### 4.2 Methods that encode the result in the payload (status almost always OK)
 
 - `existKey` — missing key yields status `OK`, `value=false` (not `NOT_FOUND`!).

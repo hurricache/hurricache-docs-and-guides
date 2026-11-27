@@ -9,6 +9,7 @@
 | [cluster-client](cluster-client) | Smart-клиент: режимы MASTER/BACKUP, топология, KeyHintData placement (RU/EN) |
 | [operations](operations) | Метрики, снапшоты, эксплуатация кластера, лицензии (RU/EN) |
 | [server-config](server-config) | Конфигурация сервера: все параметры YAML-конфига, примеры для standalone и кластера (RU/EN) |
+| [tls](tls) | TLS для всех сервисов: grpc, репликация, координатор, redis proxy; mTLS, генерация сертификатов (RU/EN) |
 | [lifecycle](lifecycle) | TTL данных (мс) vs TTL лока (с) vs stability window, удаление (RU/EN) |
 | [performance](performance) | Производительность клиента: futures, сжатие, хинты, таймауты (RU/EN) |
 | [migration](migration) | Пошаговая миграция с Redis, грабли (RU/EN) |
